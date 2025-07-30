@@ -10,6 +10,12 @@
 
 This is the official JAX implementation for the paper [Mean Flows for One-step Generative Modeling](https://arxiv.org/abs/2505.13447). This code is written and tested on TPUs.
 
+
+## Update
+
+- 25.07.29 Release the [Pytorch code](https://github.com/Gsunshine/py-meanflow) for CIFAR-10.
+- 25.07.29 JAX+GPU sanity check by [this PR](https://github.com/Gsunshine/meanflow/pull/5). Thanks to [@Wenhao](https://github.com/rese1f)!
+
 ## Initialization
 
 Run `install.sh` to install the dependencies (JAX+TPUs).
@@ -181,7 +187,8 @@ The 2nd and 3nd row correspond to Table 1. (f) and Table 5, using the same effec
 
 ## TODO
 
-- [ ] Dependencies and sanity check for GPU.
+- [x] Dependencies and sanity check for JAX+GPU. (See [this PR](https://github.com/Gsunshine/meanflow/pull/5).)
+- [x] [Pytorch code](https://github.com/Gsunshine/py-meanflow) for CIFAR-10.
 
 ## License
 
@@ -206,3 +213,15 @@ This repository is a collaborative effort by Kaiming He, Runqian Wang, Qiao Sun,
 
 We gratefully acknowledge the Google TPU Research Cloud (TRC) for granting TPU access.
 We hope this work will serve as a useful resource for the open-source community.
+
+## See Also
+
+* [Our MeanFlow Pytorch repo](https://github.com/Gsunshine/py-meanflow) with CIFAR experiments.
+
+### Third-party Implementations
+
+* [zhuyu-cs/MeanFlow](https://github.com/zhuyu-cs/MeanFlow): Pytorch training code with reproduced ImageNet results.
+* [pkulwj1994/easy_meanflow)](https://github.com/pkulwj1994/easy_meanflow): Pytorch implementation with DDP+JVP and metrics for CIFAR-10.
+* [HaoyiZhu/MeanFlow-PyTorch](https://github.com/HaoyiZhu/MeanFlow-PyTorch): Pytorch implementation with ImageNet training code.
+* [haidog-yaqub/MeanFlow](https://github.com/haidog-yaqub/MeanFlow): Pytorch code for MNIST and CIFAR-10.
+* [noamelata/MeanFlow](https://github.com/noamelata/MeanFlow): Pytorch code for ImageNet.
