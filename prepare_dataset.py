@@ -33,9 +33,9 @@ flags.DEFINE_integer('batch_size', 32, 'Batch size for processing')
 flags.DEFINE_string('vae_type', 'mse', 'VAE type (mse, ema)')
 flags.DEFINE_integer('image_size', 256, 'Image size for processing (common: 256->32x32, 512->64x64, 1024->128x128 latents)')
 flags.DEFINE_boolean('compute_latent', True, 'Whether to compute and save latent dataset')
-flags.DEFINE_boolean('compute_fid', True, 'Whether to compute FID statistics')
+flags.DEFINE_boolean('compute_fid', False, 'Whether to compute FID statistics')
 flags.DEFINE_boolean('overwrite', False, 'Whether to overwrite existing files')
-
+flags.DEFINE_boolean('flip', True, 'Whether to also cache flipped image')
 
 def main(argv):
     """Main function."""
@@ -77,7 +77,8 @@ def main(argv):
             vae_type=FLAGS.vae_type,
             batch_size=FLAGS.batch_size,
             image_size=FLAGS.image_size,
-            overwrite=FLAGS.overwrite
+            overwrite=FLAGS.overwrite,
+            use_flip=FLAGS.flip
         )
     else:
         log_for_0("Skipping latent dataset computation")

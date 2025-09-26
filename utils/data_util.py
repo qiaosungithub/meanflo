@@ -9,6 +9,26 @@ from diffusers.models import FlaxAutoencoderKL
 from optax._src.alias import *
 
 NUM_CLASSES = 1000
+from torchvision import datasets, transforms
+
+class ImageFolderWithPaths(datasets.ImageFolder):
+    """Custom dataset that includes image file paths. Extends torchvision.datasets.ImageFolder"""
+
+    def __getitem__(self, index):
+        # This is what ImageFolder normally returns
+        original_tuple = super(ImageFolderWithPaths, self).__getitem__(index)
+        # The image file path
+        path = self.imgs[index][0]
+        # Make a new tuple that includes original and the path
+        tuple_with_path = original_tuple + (path,)
+        return tuple_with_path
+
+def collate_with_paths(batch):
+    """Custom collate function to handle batches with image paths."""
+    images, labels, paths = zip(*batch)
+    images = torch.stack(images, dim=0)
+    labels = torch.tensor(labels)
+    return images, labels, paths
 
 
 def create_imagenet_dataloader(imagenet_root, split, batch_size, image_size, num_workers=4, for_fid=False):
@@ -34,7 +54,12 @@ def create_imagenet_dataloader(imagenet_root, split, batch_size, image_size, num
             transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
         ])
     
-    dataset = datasets.ImageFolder(
+    # dataset = datasets.ImageFolder(
+    #     os.path.join(imagenet_root, split),
+    #     transform=transform,
+    #     loader=loader,
+    # )
+    dataset = ImageFolderWithPaths(
         os.path.join(imagenet_root, split),
         transform=transform,
         loader=loader,
@@ -71,6 +96,7 @@ def create_imagenet_dataloader(imagenet_root, split, batch_size, image_size, num
         prefetch_factor=2 if num_workers > 0 else None,
         pin_memory=False,
         persistent_workers=True if num_workers > 0 else False,
+        collate_fn=collate_with_paths,
     )
     
     # Return the per-worker dataset size (distributed size) and total dataset size
@@ -79,7 +105,7 @@ def create_imagenet_dataloader(imagenet_root, split, batch_size, image_size, num
 
 def prepare_batch_data_encode(batch):
     """Prepare batch data for VAE encoding."""
-    image, label = batch
+    image, label, paths = batch
     
     # Convert BCHW -> BHWC
     image = image.permute(0, 2, 3, 1)  # BCHW -> BHWC
@@ -112,10 +138,11 @@ def prepare_batch_data_encode(batch):
         'image': image.numpy(),
         'label': label.numpy(),
         'original_batch_size': original_batch_size,
+        'paths': paths,
     }
 
 
-def compute_latent_dataset(imagenet_root, output_dir, vae_type, batch_size, image_size, overwrite=False):
+def compute_latent_dataset(imagenet_root, output_dir, vae_type, batch_size, image_size, overwrite=False, use_flip=False):
     """Compute and save latent dataset from ImageNet."""
     from torchvision import datasets
     from tqdm import tqdm
@@ -142,8 +169,22 @@ def compute_latent_dataset(imagenet_root, output_dir, vae_type, batch_size, imag
             jnp.transpose(batch, (0, 3, 1, 2)),  # BHWC -> BCHW
             method=FlaxAutoencoderKL.encode
         ).latent_dist
-        return jnp.concatenate((latent_dist.mean, latent_dist.std), axis=-1)
-    
+
+        if use_flip:
+            latent_dist_flipped = vae_model.apply(
+                {'params': vae_params}, 
+                jnp.transpose(jnp.flip(batch, axis=2), (0, 3, 1, 2)),  # BHWC -> BCHW
+                method=FlaxAutoencoderKL.encode
+            ).latent_dist
+
+        ret = jnp.concatenate((latent_dist.mean, latent_dist.std), axis=-1)
+        if use_flip:
+            ret = ret, jnp.concatenate((latent_dist_flipped.mean, latent_dist_flipped.std), axis=-1)
+        else:
+            ret = ret,
+
+        return ret
+
     p_encode_fn = jax.pmap(
         partial(encode_fn, vae, vae_params),
         axis_name='batch',
@@ -190,8 +231,12 @@ def compute_latent_dataset(imagenet_root, output_dir, vae_type, batch_size, imag
             batch_data = prepare_batch_data_encode(batch)
             
             # Encode to latents
-            latents = p_encode_fn(batch_data['image']).reshape(-1, latent_size, latent_size, 8)
+            latents = tuple(l.reshape(-1, latent_size, latent_size, 8) for l in p_encode_fn(batch_data['image']))
+            assert len(latents) == use_flip + 1, latents
+
+            keys = ('image', 'flipped')
             labels = batch_data['label'].reshape(-1)
+            paths = batch_data['paths']
             
             # Only process the original batch size (ignore padded samples)
             original_batch_size = batch_data['original_batch_size']
@@ -202,15 +247,19 @@ def compute_latent_dataset(imagenet_root, output_dir, vae_type, batch_size, imag
                     break
                     
                 # Transpose latent to match expected shape (B, C, H, W)
-                latent = torch.tensor(np.array(latents[i]))
-                latent = latent.permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
+                
+                # latent = torch.tensor(np.array(latents[i]))
+                # latent = latent.permute(2, 0, 1)  # (H, W, C) -> (C, H, W)
                 
                 sample_data = {
-                    'image': latent,
                     'label': torch.tensor(np.array(labels[i]))
-                }
-                
-                filename = f"{sample_idx:08d}.pt"
+                } | {keys[sb]: torch.tensor(np.array(ltt[i])) for sb, ltt in enumerate(latents)}
+                assert len(sample_data) == use_flip + 2, sample_data.keys()
+
+                # filename = f"{sample_idx:08d}.pt"
+                filename = os.path.basename(paths[i])
+                assert filename.endswith('.JPEG'), f"Unexpected file extension: {filename}"
+                filename = filename.replace('.JPEG', '.pt')
                 filepath = os.path.join(split_output_dir, filename)
                 torch.save(sample_data, filepath)
                 
@@ -218,5 +267,8 @@ def compute_latent_dataset(imagenet_root, output_dir, vae_type, batch_size, imag
             
             if batch_idx % 100 == 0:
                 log_for_0(f"Progress {split}: {batch_idx} batches, {sample_idx} samples")
-        
+       
+            if batch_idx == 1:
+                log_for_0(f'sanity check: {filepath}')
+
         log_for_0(f"Completed {split} split: {sample_idx} samples saved")
