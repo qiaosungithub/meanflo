@@ -123,7 +123,7 @@ class InceptionV3(nn.Module):
         if not self.include_head:
             return x
         x = nn.Dropout(rate=0.5)(x, deterministic=not train, rng=rng)
-        x = jnp.reshape(x, newshape=(x.shape[0], -1))
+        x  = x.reshape((x.shape[0], -1))
         x = Dense(features=self.num_classes_,
                   params_dict=utils.get(self.params_dict, 'fc'),
                   dtype=self.dtype)(x)
@@ -455,7 +455,7 @@ class InceptionAux(nn.Module):
                         params_dict=utils.get(self.params_dict, 'conv1'),
                         dtype=self.dtype)(x, train)
         x = jnp.mean(x, axis=(1, 2))
-        x = jnp.reshape(x, newshape=(x.shape[0], -1))
+        x  = x.reshape((x.shape[0], -1))
         x = Dense(features=self.num_classes,
                   params_dict=utils.get(self.params_dict, 'fc'),
                   dtype=self.dtype)(x)
