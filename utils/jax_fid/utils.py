@@ -29,7 +29,7 @@ def download(url, ckpt_dir=None):
         progress_bar.close()
         
         if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-            print('An error occured while downloading, please try again.')
+            print('An 错误 occured while downloading, please try again.')
             if os.path.exists(ckpt_file_temp):
                 os.remove(ckpt_file_temp)
         else:
